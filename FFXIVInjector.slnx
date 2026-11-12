@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="FFXIVInjector.Core/FFXIVInjector.Core.csproj" />
+  <Project Path="FFXIVInjector.MacCli/FFXIVInjector.MacCli.csproj" />
   <Project Path="FFXIVInjector.UI/FFXIVInjector.UI.csproj" />
 </Solution>

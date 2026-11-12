@@ -2,6 +2,8 @@
 
 파이널판타지14 글로벌 클라이언트에 한국어 텍스트, 폰트 및 이미지 리소스를 적용하는 도구입니다. [FFXIV KR Data Extractor](https://github.com/dambyul/ffxiv-kr-data-extractor)에서 배포한 데이터를 사용하며, 한국 서버 클라이언트를 별도로 설치할 필요는 없습니다.
 
+macOS 공식 클라이언트는 텍스트·폰트 전용 CLI를 사용합니다. [README-mac.md](README-mac.md)를 참고하세요.
+
 > [!CAUTION]
 > - 본 프로그램의 사용으로 인해 발생하는 모든 문제에 대한 책임은 **사용자 본인**에게 있습니다.
 
