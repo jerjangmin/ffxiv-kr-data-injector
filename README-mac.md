@@ -7,7 +7,7 @@ macOS 공식 클라이언트(CrossOver 래퍼 앱)에 한글 텍스트와 폰트
 ## 설치
 
 ```bash
-./mac/build-app.sh --install     # ~/Applications/FFXIV 한글패치.app
+./mac/build-app.sh --install     # /Applications/FFXIV 한글패치.app
 ```
 
 앱에는 맥 전용 코드만 들어 있습니다. 주입 엔진(업스트림 `FFXIVInjector.Core`)은 앱을 켤 때마다 [dambyul/ffxiv-kr-data-injector](https://github.com/dambyul/ffxiv-kr-data-injector)의 **최신 릴리스 소스를 받아 빌드**합니다. 업스트림이 새 릴리스를 내면 다음 실행 때 자동으로 따라갑니다.
