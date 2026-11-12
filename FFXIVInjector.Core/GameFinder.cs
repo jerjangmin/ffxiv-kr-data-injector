@@ -57,16 +57,8 @@ public class GameFinder
 
     private string? FindMacGamePath()
     {
-        string[] commonPaths = {
-            "/Applications/FINAL FANTASY XIV ONLINE.app",
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal), "Applications/FINAL FANTASY XIV ONLINE.app")
-        };
-
-        foreach (var path in commonPaths)
-        {
-            if (Directory.Exists(path)) return path;
-        }
-
-        return null;
+        // The game files live in the CrossOver bottle, not in the .app bundle (which has no sqpack).
+        string root = Mac.MacPaths.BottleInstallRoot;
+        return File.Exists(Path.Combine(root, "game", "sqpack", "ffxiv", "0a0000.win32.index")) ? root : null;
     }
 }

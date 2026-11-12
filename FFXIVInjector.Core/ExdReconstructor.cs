@@ -21,6 +21,28 @@ public class ExdReconstructor
         public List<(uint StartId, uint RowCount)> PageTable { get; set; } = new();
     }
 
+    /// <summary>
+    /// Returns null when the CSV column layout fits the current EXH, otherwise the reason.
+    /// Merging is offset-based, so a CSV made for an older column layout would write into the wrong fields.
+    /// </summary>
+    public static string? CheckCompatibility(CsvData csv, SheetSchema schema)
+    {
+        for (int i = 0; i < csv.Offsets.Count; i++)
+        {
+            int offset = csv.Offsets[i];
+            if (offset < 0) return $"column {i}: invalid offset";
+            int schemaIdx = schema.Offsets.IndexOf(offset);
+            if (schemaIdx < 0) return $"column {i}: offset {offset} not in EXH";
+            if (i < csv.Types.Count)
+            {
+                bool csvStr = csv.Types[i].Equals("str", StringComparison.OrdinalIgnoreCase);
+                bool exhStr = schema.Types[schemaIdx].Equals("str", StringComparison.OrdinalIgnoreCase);
+                if (csvStr != exhStr) return $"column {i}: offset {offset} type {csv.Types[i]} vs EXH {schema.Types[schemaIdx]}";
+            }
+        }
+        return null;
+    }
+
     public static byte[] Merge(byte[] originalData, CsvData patchData, SheetSchema fullSchema, HashSet<int>? offsetExclusions = null)
     {
         if (originalData == null || originalData.Length < 32 || Encoding.ASCII.GetString(originalData, 0, 4) != "EXDF")

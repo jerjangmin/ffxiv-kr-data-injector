@@ -51,7 +51,9 @@ internal static class ResourceCacheCleanupTests
         File.WriteAllText(Path.Combine(game,"resource-swap.ini"),currentMap+"\nexe-hash\n");
         using (var locked = new FileStream(nativeLog,FileMode.Open,FileAccess.ReadWrite,FileShare.None))
             ResourceCacheCleanup.CleanRuntime(cache,game);
-        if (!File.Exists(currentMap) || File.Exists(oldMap) || !File.Exists(nativeLog)) throw new Exception("Runtime cleanup must keep active mapping and defer locked log");
+        // FileShare.None only blocks deletion on Windows. On Unix the open file is unlinked right away, so there is nothing to defer.
+        bool locksBlockDelete = OperatingSystem.IsWindows();
+        if (!File.Exists(currentMap) || File.Exists(oldMap) || File.Exists(nativeLog) != locksBlockDelete) throw new Exception("Runtime cleanup must keep active mapping and defer locked log");
         ResourceCacheCleanup.CleanRuntime(cache,game);
         if (File.Exists(nativeLog) || !File.Exists(currentMap)) throw new Exception("Deferred log must be removed on retry");
         Console.WriteLine("PASS: old cache removal, current assets/metadata/runtime preservation, repeat cleanup, outside/incomplete package rejection.");

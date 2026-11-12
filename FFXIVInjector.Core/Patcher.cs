@@ -243,6 +243,13 @@ public class CsvInjector : IPatcher
                             var exhFile = lumina.GetFile(exhPath);
                             if (exhFile != null) {
                                 var schema = ParseExhSchema(exhFile.Data);
+                                string? incompatible = ExdReconstructor.CheckCompatibility(patchData, schema);
+                                if (incompatible != null)
+                                {
+                                    OnLog?.Invoke($"    [Warning] {sheetName}: CSV columns do not match the game's EXH ({incompatible}). Skipping.");
+                                    skippedCount++;
+                                    continue;
+                                }
                                 foreach (var pageInfo in schema.PageTable) {
                                     // Match the EXD file for the requested language
                                     string[] probeSuffixes = { $"_{langSuffix}", "" };
