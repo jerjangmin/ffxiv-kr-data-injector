@@ -12,8 +12,12 @@ const string Usage = """
   apply      순정 백업을 베이스로 한글 텍스트·폰트를 주입해 교체합니다. 백업이 먼저 있어야 합니다.
   verify     게임 파일의 인덱스 무결성, 전체 EXD·폰트 재읽기, 한글 여부를 검사합니다.
   restore    순정 백업으로 원복하고 해시를 확인합니다.
+  update-game  게임 업데이트용: 원복 → 런처로 업데이트하는 동안 대기 → 런처 종료 후 새 버전 백업·재적용.
   prune      현재 버전이 아닌 이전 버전 백업을 지웁니다(--yes 필요).
   refresh-url --tag <릴리스>  업스트림 릴리스 실행 파일에서 한글 리소스 주소를 읽어 저장합니다.
+  preflight  FF14 실행 전 판단(action=launch|apply-then-launch|ask-update|update|blocked).
+  ack-maintenance  "그냥 플레이"를 기록해 지금까지의 점검은 다시 묻지 않습니다.
+  wait-session [--start-timeout <초>]  FF14가 켜졌다가 완전히 꺼질 때까지 기다립니다.
   version    이 도구가 빌드된 업스트림 릴리스를 보여 줍니다.
 
 옵션
@@ -39,7 +43,7 @@ for (int i = 1; i < args.Length; i++)
 {
     string a = args[i];
     if (a is "--offline" or "--verbose" or "--yes") { options[a] = null; continue; }
-    if (a is "--game" or "--state" or "--resources" or "--lang" or "--tag" or "--exe" && i + 1 < args.Length) { options[a] = args[++i]; continue; }
+    if (a is "--game" or "--state" or "--resources" or "--lang" or "--tag" or "--exe" or "--start-timeout" && i + 1 < args.Length) { options[a] = args[++i]; continue; }
     Console.Error.WriteLine($"알 수 없는 옵션: {a}\n\n{Usage}");
     return 2;
 }
@@ -64,6 +68,38 @@ try
             Say($"도구: 업스트림 {UpstreamTag()} 기반");
             PrintStatus(service.Status());
             return 0;
+        case "preflight":
+        {
+            var status = service.Status();
+            var maintenances = await Lodestone.FetchAsync();
+            var decision = Preflight.Decide(status, ToolConfig.Load(statePath).MaintenanceAcknowledgedUtc, maintenances, DateTime.UtcNow);
+            string action = decision.Action switch
+            {
+                LaunchAction.Launch => "launch", LaunchAction.ApplyThenLaunch => "apply-then-launch",
+                LaunchAction.AskUpdate => "ask-update", LaunchAction.Update => "update", _ => "blocked",
+            };
+            Say($"action={action}");
+            Say($"reason={decision.Reason}");
+            Say($"maintenance={decision.Maintenance ?? ""}");
+            Say($"first_run={(!status.HasBackup && status.OtherBackupVersions.Count == 0 && status.Applied == null ? 1 : 0)}");
+            return 0;
+        }
+        case "ack-maintenance":
+        {
+            var config = ToolConfig.Load(statePath);
+            config.MaintenanceAcknowledgedUtc = DateTime.UtcNow;
+            config.Save(statePath);
+            return 0;
+        }
+        case "wait-session":
+        {
+            using var cts = new CancellationTokenSource();
+            Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+            TimeSpan? timeout = options.GetValueOrDefault("--start-timeout") is { } t ? TimeSpan.FromSeconds(int.Parse(t)) : null;
+            try { await service.WaitForGameSessionAsync(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(15), cts.Token, timeout); }
+            catch (OperationCanceledException) { Say("대기를 중단했습니다."); return 1; }
+            return 0;
+        }
         case "version":
             Console.WriteLine(UpstreamTag());
             return 0;
@@ -86,12 +122,20 @@ try
             service.Backup();
             return 0;
         case "apply":
+        case "update-game":
         {
             var language = ParseLanguage(options.GetValueOrDefault("--lang")) ?? MacPaths.ReadClientLanguage() ?? GameLanguage.English;
             IResourceProvider resources = options.TryGetValue("--resources", out var local) && local != null
                 ? new LocalResourceProvider(Expand(local))
                 : new DownloadResourceProvider(Path.Combine(statePath, "resources"), ResourceUrl(), options.ContainsKey("--offline"));
-            await service.ApplyAsync(resources, language);
+            if (command == "apply") await service.ApplyAsync(resources, language);
+            else
+            {
+                using var cts = new CancellationTokenSource();
+                Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+                try { await service.UpdateCycleAsync(resources, language, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(15), cts.Token); }
+                catch (OperationCanceledException) { Say("중단했습니다. 게임 파일은 순정 상태입니다. 나중에 한글 적용을 실행하세요."); return 1; }
+            }
             Say("게임을 켜서 타이틀·로비·UI가 한글로 보이는지 확인하세요. 문제가 있으면 restore로 원복합니다.");
             return 0;
         }

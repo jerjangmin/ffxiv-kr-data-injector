@@ -17,7 +17,9 @@ internal static class MacPatchServiceTests
     {
         public List<string> Processes { get; } = new();
         public List<string> Handles { get; } = new();
-        public IReadOnlyList<string> FindGameProcesses() => Processes;
+        /// <summary>When set, replaces Processes and can act like the launcher between polls.</summary>
+        public Func<IReadOnlyList<string>>? Script { get; set; }
+        public IReadOnlyList<string> FindGameProcesses() => Script?.Invoke() ?? Processes;
         public IReadOnlyList<string> FindOpenHandles(IReadOnlyCollection<string> files) => Handles;
     }
 
@@ -58,6 +60,7 @@ internal static class MacPatchServiceTests
         RefusesToBackUpPatchedFiles(root);
         await FailedInjectionOrVerificationLeavesGameUntouched(root);
         await CorruptedBackupIsRejected(root);
+        await UpdateCycleLetsTheLauncherPatchPristineFiles(root);
         ParsersAndHelpers();
         Console.WriteLine("PASS: mac backup/apply/restore flow, version/process/open-file refusals, failed apply isolation, corrupted backup, parsers.");
     }
@@ -176,6 +179,56 @@ internal static class MacPatchServiceTests
         var before = Snapshot(game);
         await ExpectRefused(() => service.ApplyAsync(new NoResources(), GameLanguage.English), "apply from a corrupted backup");
         SameFiles(game, before, "corrupted backup");
+    }
+
+    private static async Task UpdateCycleLetsTheLauncherPatchPristineFiles(string root)
+    {
+        var (game, state) = Setup(root, "cycle");
+        var probe = new FakeProbe();
+        var service = Service(game, state, probe);
+        var pristine = Snapshot(game);
+        service.Backup();
+        await service.ApplyAsync(new NoResources(), GameLanguage.English);
+
+        // Simulated user: opens the launcher as soon as the files are pristine again; the launcher patches the
+        // game, stays open for one more poll, then closes.
+        const string newVersion = "2026.11.10.0000.0000";
+        int phase = 0, polls = 0;
+        bool patchedWhileLauncherOpen = false;
+        bool Pristine() => pristine.All(e => Snapshot(game)[e.Key].SequenceEqual(e.Value));
+        probe.Script = () =>
+        {
+            if (++polls > 100) throw new Exception("cycle never restored the files or never finished waiting");
+            switch (phase)
+            {
+                case 0 when Pristine():
+                    phase = 1;
+                    File.WriteAllText(Path.Combine(game, "ffxivgame.ver"), newVersion);
+                    File.AppendAllText(Path.Combine(game, "sqpack", "ffxiv", "0a0000.win32.dat0"), " +official update");
+                    return ["1 FINAL FANTASY XIV ONLINE.app/Contents/MacOS/wine"];
+                case 1:
+                    phase = 2;
+                    patchedWhileLauncherOpen = File.ReadAllText(Path.Combine(game, "sqpack", "ffxiv", "0a0000.win32.dat0")).Contains("KOREAN-PATCH");
+                    return ["2 C:/game/boot/ffxivlauncher64.exe"];
+                default:
+                    return [];
+            }
+        };
+        await service.UpdateCycleAsync(new NoResources(), GameLanguage.English, TimeSpan.Zero, TimeSpan.Zero);
+        bool sawPristineAtPatchTime = phase == 2;
+        Assert(sawPristineAtPatchTime, "the cycle must restore pristine files before the launcher runs");
+        Assert(!patchedWhileLauncherOpen, "apply must wait until the launcher has closed");
+        var status = service.Status();
+        Assert(status.GameVersion == newVersion && status.State == GameFileState.Patched, "new version is patched again");
+        string newBackup = File.ReadAllText(Path.Combine(state, "pristine", newVersion, "0a0000.win32.dat0"));
+        Assert(newBackup.EndsWith(" +official update") && !newBackup.Contains("KOREAN-PATCH"), "new backup holds the updated pristine files");
+
+        // A cycle never starts while the launcher is already open (it may be patching right now).
+        probe.Script = null;
+        probe.Processes.Add("3 C:/game/boot/ffxivboot64.exe");
+        var before = Snapshot(game);
+        await ExpectRefused(() => service.UpdateCycleAsync(new NoResources(), GameLanguage.English, TimeSpan.Zero, TimeSpan.Zero), "cycle while launcher runs");
+        SameFiles(game, before, "cycle refusal");
     }
 
     private static void ParsersAndHelpers()

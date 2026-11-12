@@ -1,6 +1,6 @@
 #!/bin/bash
 # Developer build: the Mac tool against this checkout (not the latest upstream release) into publish/mac/ffxiv-kr-mac.
-# Users run "FFXIV 한글패치.app" (build-app.sh), which builds against the latest upstream release itself.
+# Users run "FF14 한글.app" (build-app.sh), which builds against the latest upstream release itself.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DOTNET="$(command -v dotnet || true)"

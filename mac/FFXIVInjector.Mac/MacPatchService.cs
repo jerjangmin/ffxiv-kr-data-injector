@@ -42,6 +42,7 @@ public sealed class MacStatus
     public string GameVersion { get; init; } = "";
     public GameFileState State { get; init; }
     public bool HasBackup { get; init; }
+    public DateTime? BackupCreatedUtc { get; init; }
     public StateRecord? Applied { get; init; }
     public List<string> OtherBackupVersions { get; init; } = new();
     public List<string> RunningProcesses { get; init; } = new();
@@ -103,6 +104,7 @@ public sealed class MacPatchService
             GameVersion = version,
             State = DetermineState(backup, applied),
             HasBackup = backup != null,
+            BackupCreatedUtc = backup?.CreatedUtc,
             Applied = applied,
             OtherBackupVersions = BackupVersions().Where(v => v != version).ToList(),
             RunningProcesses = _probe.FindGameProcesses().ToList(),
@@ -267,6 +269,68 @@ public sealed class MacPatchService
             Log("주의: 0a0000.win32.dat1이 남아 있습니다. 이 도구가 만든 파일이 아니라 지우지 않았습니다(인덱스가 참조하지 않으면 무해).");
         Log($"원복 완료: 게임 버전 {version} 순정 파일과 해시가 같습니다.");
         return true;
+    }
+
+    // ---------- game update cycle ----------
+
+    /// <summary>
+    /// For patch days: restore the pristine files, wait while the user updates with the launcher, then back up the
+    /// new version and apply again. The launcher only ever patches pristine files.
+    /// </summary>
+    public async Task UpdateCycleAsync(IResourceProvider resources, GameLanguage language, TimeSpan poll, TimeSpan settle, CancellationToken ct = default)
+    {
+        var status = Status();
+        if (status.RunningProcesses.Count > 0)
+            throw new RefusedException("게임 또는 런처가 이미 실행 중입니다. 완전히 종료한 뒤 다시 시작하세요(이미 업데이트가 진행됐다면 먼저 확인이 필요합니다).");
+        switch (status.State)
+        {
+            case GameFileState.Patched:
+                Restore();
+                break;
+            case GameFileState.Pristine:
+            case GameFileState.PristineWithoutBackup:
+                Log("이미 순정 상태입니다.");
+                break;
+            default:
+                throw new RefusedException(status.HasBackup
+                    ? "현재 파일이 이 도구의 기록과 다릅니다. 먼저 원복(restore)한 뒤 다시 시작하세요."
+                    : "현재 파일이 순정이 아니고 이 버전의 백업도 없습니다. 런처의 파일 검사·복구로 순정 상태를 만든 뒤 한글 적용을 하세요.");
+        }
+        string before = status.GameVersion;
+        Log("");
+        Log("지금 런처(FINAL FANTASY XIV ONLINE 앱)를 켜서 업데이트하세요.");
+        Log("업데이트가 끝나면 게임을 시작하지 말고 앱을 완전히 종료(⌘Q)하세요. 종료를 감지하면 바로 한글을 다시 적용합니다.");
+        Log("(그만두려면 Ctrl+C. 파일은 순정 상태로 남습니다.)");
+        await WaitForGameSessionAsync(poll, settle, ct);
+
+        string after = ReadGameVersion();
+        Log(after == before ? $"게임 버전 변화 없음({after}). 그대로 다시 적용합니다." : $"게임이 {before} → {after}로 업데이트됐습니다.");
+        Backup();
+        await ApplyAsync(resources, language, ct);
+    }
+
+    /// <summary>Waits until the launcher/game has started and then stayed closed for <paramref name="settle"/>.</summary>
+    public async Task WaitForGameSessionAsync(TimeSpan poll, TimeSpan settle, CancellationToken ct = default, TimeSpan? startTimeout = null)
+    {
+        var waiting = Stopwatch.StartNew();
+        while (_probe.FindGameProcesses().Count == 0)
+        {
+            if (startTimeout != null && waiting.Elapsed > startTimeout)
+                throw new RefusedException("FF14가 실행되지 않았습니다.");
+            await Task.Delay(poll, ct);
+        }
+        Log("런처 실행을 감지했습니다. 업데이트 후 앱을 종료하면 이어서 진행합니다...");
+        var quiet = Stopwatch.StartNew();
+        bool running = true;
+        while (true)
+        {
+            await Task.Delay(poll, ct);
+            if (_probe.FindGameProcesses().Count > 0) { running = true; continue; }
+            if (running) { running = false; quiet.Restart(); }
+            // Launcher, updater and game hand over to each other; only a steady quiet period counts as closed.
+            if (quiet.Elapsed >= settle) break;
+        }
+        Log("런처·게임 종료를 확인했습니다.");
     }
 
     /// <summary>Deletes backups of versions other than the current one. Only allowed when the current version is backed up.</summary>

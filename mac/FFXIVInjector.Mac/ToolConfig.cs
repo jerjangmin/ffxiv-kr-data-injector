@@ -9,6 +9,8 @@ public sealed class ToolConfig
     public string ResourceBaseUrl { get; set; } = "";
     /// <summary>Upstream release whose executable the URL was read from.</summary>
     public string? ResourceUrlSource { get; set; }
+    /// <summary>The user chose "just play" after a maintenance; maintenances ending before this are not asked again.</summary>
+    public DateTime? MaintenanceAcknowledgedUtc { get; set; }
 
     public static string PathIn(string stateRoot) => Path.Combine(stateRoot, "config.json");
 

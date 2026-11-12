@@ -7,11 +7,12 @@ refresh_tool() {
   out="$("$RES/update.sh" | tee /dev/stderr)" || true
   BIN="$(printf '%s\n' "$out" | sed -n 's/^BIN=//p' | tail -1)"
 }
+trap 'true' INT   # Ctrl+C stops the running tool command, not the menu.
 pause() { echo; read -r -p "엔터를 누르면 메뉴로 돌아갑니다."; }
 confirm() { read -r -p "$1 (y/N) " ok; [ "$ok" = "y" ] || [ "$ok" = "Y" ]; }
 
 clear
-echo "=== FF14 맥 한글패치 (텍스트·폰트) ==="
+echo "=== FF14 한글 관리 메뉴 ==="
 refresh_tool
 if [ -z "$BIN" ] || [ ! -x "$BIN" ]; then
   echo; echo "도구를 준비하지 못했습니다. 위 메시지를 확인하세요."
@@ -20,7 +21,7 @@ fi
 
 while true; do
   clear
-  echo "=== FF14 맥 한글패치 (텍스트·폰트) ==="
+  echo "=== FF14 한글 관리 메뉴 ==="
   echo
   "$BIN" status
   echo
@@ -29,6 +30,7 @@ while true; do
   echo "  3) 검증 (파일 무결성·한글 여부 검사)"
   echo "  4) 이전 버전 백업 정리"
   echo "  5) 도구 업데이트 확인"
+  echo "  6) 게임 업데이트 모드 (원복 → FF14로 업데이트 → 종료하면 재적용)"
   echo "  q) 종료"
   echo
   read -r -p "선택: " choice
@@ -43,6 +45,7 @@ while true; do
     3) "$BIN" verify; pause ;;
     4) if confirm "현재 버전이 아닌 백업을 지울까요?"; then "$BIN" prune --yes; fi; pause ;;
     5) refresh_tool; pause ;;
+    6) "$BIN" update-game; pause ;;
     q|Q) exit 0 ;;
     *) ;;
   esac

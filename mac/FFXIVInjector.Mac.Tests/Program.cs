@@ -5,6 +5,7 @@ try
 {
     await MacPatchServiceTests.Run(root);
     ReleaseUrlExtractorTests.Run();
+    PreflightTests.Run();
 }
 finally
 {
