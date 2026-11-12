@@ -1,4 +1,5 @@
-namespace FFXIVInjector.Core.Mac;
+using FFXIVInjector.Core;
+namespace FFXIVInjector.Mac;
 
 /// <summary>Locations used by the official macOS client (CrossOver bottle) and by the macOS tool.</summary>
 public static class MacPaths

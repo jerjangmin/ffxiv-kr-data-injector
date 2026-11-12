@@ -1,6 +1,7 @@
 // macOS text/font patch CLI. See README-mac.md.
+using System.Reflection;
 using FFXIVInjector.Core;
-using FFXIVInjector.Core.Mac;
+using FFXIVInjector.Mac;
 
 const string Usage = """
 사용법: ffxiv-kr-mac <명령> [옵션]
@@ -12,6 +13,8 @@ const string Usage = """
   verify     게임 파일의 인덱스 무결성, 전체 EXD·폰트 재읽기, 한글 여부를 검사합니다.
   restore    순정 백업으로 원복하고 해시를 확인합니다.
   prune      현재 버전이 아닌 이전 버전 백업을 지웁니다(--yes 필요).
+  refresh-url --tag <릴리스>  업스트림 릴리스 실행 파일에서 한글 리소스 주소를 읽어 저장합니다.
+  version    이 도구가 빌드된 업스트림 릴리스를 보여 줍니다.
 
 옵션
   --game <폴더>       게임 폴더(기본: CrossOver 보틀 안의 .../FINAL FANTASY XIV - A Realm Reborn/game)
@@ -36,7 +39,7 @@ for (int i = 1; i < args.Length; i++)
 {
     string a = args[i];
     if (a is "--offline" or "--verbose" or "--yes") { options[a] = null; continue; }
-    if (a is "--game" or "--state" or "--resources" or "--lang" && i + 1 < args.Length) { options[a] = args[++i]; continue; }
+    if (a is "--game" or "--state" or "--resources" or "--lang" or "--tag" or "--exe" && i + 1 < args.Length) { options[a] = args[++i]; continue; }
     Console.Error.WriteLine($"알 수 없는 옵션: {a}\n\n{Usage}");
     return 2;
 }
@@ -58,8 +61,27 @@ try
     switch (command)
     {
         case "status":
+            Say($"도구: 업스트림 {UpstreamTag()} 기반");
             PrintStatus(service.Status());
             return 0;
+        case "version":
+            Console.WriteLine(UpstreamTag());
+            return 0;
+        case "refresh-url":
+        {
+            string? exePath = options.GetValueOrDefault("--exe");
+            string tag = options.GetValueOrDefault("--tag") ?? UpstreamTag();
+            string url = exePath != null
+                ? ReleaseUrlExtractor.Extract(File.ReadAllBytes(Expand(exePath))) ?? throw new RefusedException("실행 파일에서 리소스 주소를 찾지 못했습니다.")
+                : await ReleaseUrlExtractor.FromReleaseAsync(tag, Say);
+            var config = ToolConfig.Load(statePath);
+            bool changed = config.ResourceBaseUrl != url;
+            config.ResourceBaseUrl = url;
+            config.ResourceUrlSource = exePath ?? tag;
+            config.Save(statePath);
+            Say(changed ? "리소스 주소를 갱신했습니다." : "리소스 주소 변경 없음.");
+            return 0;
+        }
         case "backup":
             service.Backup();
             return 0;
@@ -156,13 +178,16 @@ static GameLanguage? ParseLanguage(string? value) => value?.ToLowerInvariant() s
     _ => throw new RefusedException("--lang은 ja, en, de, fr 중 하나여야 합니다."),
 };
 
-static string ResourceUrl()
+string ResourceUrl()
 {
-    string url = Environment.GetEnvironmentVariable("FFXIV_KR_RESOURCE_URL") ?? Config.ResourceBaseUrl;
-    if (!url.StartsWith("https://", StringComparison.Ordinal) || url.Contains("your-cloudfront-url", StringComparison.Ordinal))
-        throw new RefusedException("리소스 주소가 설정되지 않았습니다. FFXIVInjector.Core/Secrets.cs 또는 FFXIV_KR_RESOURCE_URL을 설정하세요.");
+    string url = Environment.GetEnvironmentVariable("FFXIV_KR_RESOURCE_URL") ?? ToolConfig.Load(statePath).ResourceBaseUrl;
+    if (!url.StartsWith("https://", StringComparison.Ordinal))
+        throw new RefusedException("한글 리소스 주소가 없습니다. 프로그램을 다시 실행해 업데이트를 받거나 refresh-url을 실행하세요.");
     return url;
 }
+
+static string UpstreamTag() =>
+    typeof(MacPatchService).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == "UpstreamTag")?.Value is { Length: > 0 } tag ? tag : "dev";
 
 static string Expand(string path) => Path.GetFullPath(path.StartsWith("~/")
     ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), path[2..]) : path);

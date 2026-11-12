@@ -181,7 +181,8 @@ public sealed class OriginalResourceManager
         foreach (var file in manifest.Files)
         {
             string path = Path.Combine(destination, file.Name);
-            GameProcess.EnsureFileNotInUse(path);
+            if (!File.Exists(path)) continue;
+            using var probe = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         }
         string workspace = Path.Combine(game, ".injector-work-" + Guid.NewGuid().ToString("N"));
         try
@@ -215,7 +216,10 @@ public sealed class OriginalResourceManager
         {
             if (!File.Exists(Path.Combine(source, name))) throw new FileNotFoundException(name);
             string target = Path.Combine(destination, name);
-            GameProcess.EnsureFileNotInUse(target);
+            if (File.Exists(target))
+            {
+                using var probe = new FileStream(target, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            }
         }
         ct.ThrowIfCancellationRequested();
         var replaced = new List<(string Target, string? Previous)>();

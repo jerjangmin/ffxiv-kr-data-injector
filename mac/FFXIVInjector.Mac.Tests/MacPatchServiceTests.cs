@@ -1,6 +1,6 @@
 using System.Text;
 using FFXIVInjector.Core;
-using FFXIVInjector.Core.Mac;
+using FFXIVInjector.Mac;
 
 /// <summary>
 /// macOS backup/apply/restore flow on small fake sqpack files. The real Lumina/sqpack path is covered by the
@@ -185,10 +185,14 @@ internal static class MacPatchServiceTests
         var holders = MacProcessGuard.ParseLsof("p10\ncwine64-preloader\nf12\np11\ncffxiv-kr-mac\n", new HashSet<int> { 11 });
         Assert(holders.SequenceEqual(["10 wine64-preloader"]), "lsof parsing");
 
-        var schema = new ExdReconstructor.SheetSchema { Offsets = [0, 4, 8], Types = ["str", "binary", "str"] };
-        Assert(ExdReconstructor.CheckCompatibility(new CsvData { Offsets = [0, 8], Types = ["str", "str"] }, schema) == null, "matching CSV layout is accepted");
-        Assert(ExdReconstructor.CheckCompatibility(new CsvData { Offsets = [12], Types = ["str"] }, schema) != null, "unknown offset is rejected");
-        Assert(ExdReconstructor.CheckCompatibility(new CsvData { Offsets = [4], Types = ["str"] }, schema) != null, "string written into a numeric column is rejected");
+        var exh = new ExhCompatibility.ExhColumns([0, 4, 8], [true, false, true]);
+        Assert(ExhCompatibility.Check([0, 8], ["str", "str"], exh) == null, "matching CSV layout is accepted");
+        Assert(ExhCompatibility.Check([12], ["str"], exh) != null, "unknown offset is rejected");
+        Assert(ExhCompatibility.Check([4], ["str"], exh) != null, "string written into a numeric column is rejected");
+        Assert(ExhCompatibility.Check([4], ["int32"], exh) == null, "numeric column with numeric CSV type is accepted");
+
+        Assert(DownloadResourceProvider.ParseVersionText("2026.10.06.1104.2304") == "2026.10.06.1104.2304", "plain version.txt");
+        Assert(DownloadResourceProvider.ParseVersionText("staging 2026.11.01.0000.0000\nstable 2026.10.06.0000.0000\n") == "2026.10.06.0000.0000", "multi-branch version.txt picks stable");
 
         string cfg = Path.Combine(Path.GetTempPath(), "ffxiv-cfg-" + Guid.NewGuid().ToString("N"));
         File.WriteAllText(cfg, "<Cutscene Settings>\r\nLanguage\t3\r\n");

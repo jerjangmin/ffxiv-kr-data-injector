@@ -1,7 +1,8 @@
+using FFXIVInjector.Core;
 using System.IO.Compression;
 using System.Text.Json;
 
-namespace FFXIVInjector.Core.Mac;
+namespace FFXIVInjector.Mac;
 
 /// <summary>Korean text (rawexd) and font resources: a root folder that contains rawexd/ and font/.</summary>
 public sealed record ResourceSet(string Root, string TextVersion, string FontVersion);
@@ -46,8 +47,8 @@ public sealed class DownloadResourceProvider(string root, string baseUrl, bool o
         string remoteText, remoteFont;
         try
         {
-            remoteText = S3ResourceManager.ParseVersionText(await client.GetStringAsync(Url("version.txt"), ct), ResourceBranch.Stable);
-            remoteFont = S3ResourceManager.ParseVersionText(await client.GetStringAsync(Url("font-version.txt"), ct), ResourceBranch.Stable);
+            remoteText = ParseVersionText(await client.GetStringAsync(Url("version.txt"), ct));
+            remoteFont = ParseVersionText(await client.GetStringAsync(Url("font-version.txt"), ct));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
@@ -73,6 +74,16 @@ public sealed class DownloadResourceProvider(string root, string baseUrl, bool o
         }
         log($"한글 리소스: 텍스트 {local.Text}, 폰트 {local.Font}");
         return new ResourceSet(root, local.Text, local.Font);
+    }
+
+    /// <summary>version.txt may list several branches ("stable 2026.10.06..."); take the stable line's number.</summary>
+    public static string ParseVersionText(string raw)
+    {
+        string search = raw.Trim();
+        foreach (var line in search.Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries))
+            if (line.Contains("stable", StringComparison.OrdinalIgnoreCase)) { search = line; break; }
+        var match = System.Text.RegularExpressions.Regex.Match(search, @"\d+(\.\d+)+");
+        return match.Success ? match.Value : throw new InvalidDataException("리소스 버전 형식을 알 수 없습니다: " + raw);
     }
 
     public static int CompareVersions(string a, string b)

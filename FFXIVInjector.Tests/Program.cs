@@ -9,7 +9,6 @@ try
 {
     await InjectorReleaseCheckerTests.Run();
     ResourceCacheCleanupTests.Run(root);
-    if (!OperatingSystem.IsWindows()) await MacPatchServiceTests.Run(root);
     VoiceTests.Run(root);
     if (args.Contains("--voice-only")) return;
     const string version = "2026.10.06.0000.0000";

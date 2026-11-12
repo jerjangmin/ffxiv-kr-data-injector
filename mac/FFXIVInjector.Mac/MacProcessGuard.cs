@@ -1,6 +1,7 @@
+using FFXIVInjector.Core;
 using System.Diagnostics;
 
-namespace FFXIVInjector.Core.Mac;
+namespace FFXIVInjector.Mac;
 
 /// <summary>Detects the game, its launcher and CrossOver/Wine processes, and processes holding target files open.</summary>
 public interface IGameActivityProbe

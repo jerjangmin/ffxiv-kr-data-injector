@@ -1,8 +1,9 @@
+using FFXIVInjector.Core;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 
-namespace FFXIVInjector.Core.Mac;
+namespace FFXIVInjector.Mac;
 
 public enum GameFileState
 {
@@ -288,9 +289,10 @@ public sealed class MacPatchService
 
     private static void DefaultInjector(string work, string resources, GameLanguage language, Action<string> log)
     {
+        var filter = ExhCompatibility.BuildFilter(work, resources, log);
         var injector = new CsvInjector { AbortOnFailure = true };
         injector.OnLog += log;
-        injector.Inject(work, resources, language);
+        injector.Inject(work, resources, language, filter);
     }
 
     private void ValidateGamePath()

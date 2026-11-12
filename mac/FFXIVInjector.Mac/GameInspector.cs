@@ -1,7 +1,8 @@
+using FFXIVInjector.Core;
 using System.Buffers.Binary;
 using System.Text;
 
-namespace FFXIVInjector.Core.Mac;
+namespace FFXIVInjector.Mac;
 
 public sealed class InspectionResult
 {
